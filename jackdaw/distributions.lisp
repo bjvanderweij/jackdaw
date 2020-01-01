@@ -23,11 +23,12 @@ must be a list of length 1 (the CDR of which is NIL)."
     (setf (gethash (car parameter) (p d)) (cdr parameter)))
   (let ((contexts (remove-duplicates (mapcar #'cdar parameters) :test #'equal)))
     (dolist (context contexts)
-      (let ((sum 0))
-	(maphash (lambda (param v) (when (equal (cdr param) context)
-				     (incf sum v)))
-		 (parameters d))
-	(when (> (abs (- sum 1)) 1.0e-10)
+      (let ((sum))
+	(maphash (lambda (param v)
+		   (when (equal (cdr param) context)
+		     (setf sum (apply #'pr:add (cons v (unless (null sum) (list sum)))))))
+		 (p d))
+	(when (> (abs (- (pr:out sum) 1)) 1.0e-10) ;; Check that sum is approximately one.
 	  (warn "Parameters of ~A sum to ~A, not to approximately 1.0, for context ~A."
 		(dist-var d) sum context))))))
 
@@ -42,15 +43,15 @@ must be a list of length 1 (the CDR of which is NIL)."
 	   (new-s-count (1+ (gethash (cons symbol arguments) counts 0))))
       (setf (gethash arguments counts) new-arg-count)
       (setf (gethash (cons symbol arguments) counts) new-s-count)
-      (setf (gethash (cons symbol arguments) (parameters d))
-	    (/ new-s-count new-arg-count)))))
+      (setf (gethash (cons symbol arguments) (p d))
+	    (pr:in (/ new-s-count new-arg-count))))))
 
 (defmethod next-sequence ((d distribution) training?)
   "Called after each training sequence. May be used to update
 model state.")
        
 (defmethod probability ((d uniform) arguments symbol)
-  1)
+  (pr:in 1))
 
 
 (defmethod probability ((d bernouilli) arguments symbol)
@@ -62,7 +63,7 @@ the implementation does not support this."))
       (progn
 	(unless (equal symbol (cadr (symbols d)))
 	  (warn "Generating (1 - p) probability for unfamiliar symbol."))
-	(- 1 (p d)))))
+	(pr:in (- 1 (p d))))))
 
 
 (defmethod probability ((d categorical) arguments symbol)
@@ -73,8 +74,8 @@ the implementation does not support this."))
 	 (arguments (mapcar (lambda (v) (getarg v parents-state)) (arguments d)))
 	 (probabilities (mapcar (lambda (s) (probability d arguments s))
 				congruent-states))
-	 (sum (apply #'+ probabilities)))
+	 (sum (apply #'pr:add probabilities)))
     (loop for s in congruent-states for p in probabilities do
 	 (setf (gethash s table)
-	       (/ p sum)))
+	       (pr:div p sum)))
     table))
