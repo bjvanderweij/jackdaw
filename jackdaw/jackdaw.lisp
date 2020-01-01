@@ -264,7 +264,7 @@ congruent states of ~A during training." vertex))
 	     marginal)
     states))
 
-(defmethod moment ((m generative-model) moment congruent-states)
+(defmethod transition ((m generative-model) moment congruent-states)
   (let ((marginal (make-hash-table :test #'equal))
 	(marginal-variables (mapcar #'apriori (marginal-params m))))
     (dolist (previous-state congruent-states)
