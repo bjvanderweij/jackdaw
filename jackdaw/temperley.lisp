@@ -1,3 +1,5 @@
+(cl:in-package #:jackdaw)
+
 ;;;;;;;;;;;;;;;;;;;; Probability distributions ;;;;;;;;;;;;;;;;;;;;
 
 (defclass tactus-interval (distribution)
@@ -18,32 +20,34 @@
 
 (defmethod probability ((d tactus-interval) arguments symbol)
   (let ((previous (car arguments)))
-    (if (eq previous +inactive+)
-	(elt (t0 d) (- symbol 9)) ;(min-tactus (model d)))
-	(exp (- (expt (* 0.5 (- symbol previous )) 2))))))
+    (pr:in (if (eq previous +inactive+)
+	       (elt (t0 d) (- symbol 9)) ;(min-tactus (model d)))
+	       (exp (- (expt (* 0.5 (- symbol previous )) 2)))))))
 
 (defmethod probability ((d onset) arguments symbol)
   (let ((p (elt (p d) (car arguments))))
-    (if symbol p (- 1 p))))
+    (pr:in (if symbol p (- 1 p)))))
 
 (defmethod probability ((d bar-phase) arguments symbol)
   (let ((grouping (car arguments)))
-    (case grouping
-      (2 (elt (append (duple d) (list (- 1 (apply #'+ (duple d))))) symbol))
-      (3 (elt (append (triple d) (list (- 1 (apply #'+ (triple d))))) symbol)))))
+    (pr:in
+     (case grouping
+       (2 (elt (append (duple d) (list (- 1 (apply #'+ (duple d))))) symbol))
+       (3 (elt (append (triple d) (list (- 1 (apply #'+ (triple d))))) symbol))))))
 
 (defmethod probability ((d beat-deviation) arguments symbol)
-  (if (eq symbol '*) 1
+  (if (eq symbol '*) (pr:in 1)
       (let* ((period (car arguments))
 	     (center (beat-location period (subdivision d) (beat-phase d)))
 	     (deviation (abs (- center symbol))))
-	(elt (p d) deviation))))
+	(pr:in (elt (p d) deviation)))))
 
 (defmethod probability ((d tactus-phase) arguments symbol)
   (let ((interval (car arguments))
 	(p-zero (zero d)))
-    (if (eq symbol 0) p-zero
-	(/ (- 1 p-zero) (1- interval)))))
+    (pr:in
+     (if (eq symbol 0) p-zero
+	 (/ (- 1 p-zero) (1- interval))))))
 
 (defun beat-location (period subdivision phase)
   (floor (/ (* phase period) subdivision)))
@@ -135,3 +139,11 @@
    (bar-phase :BPH (:u) :duple '(.65) :triple '(.33 .667))
    (tactus-phase :TPH (:t) :zero .6)
    (onset :N (:bs) :p '(.01 .48 .74 .95))))
+
+(defmethod moment ((m temperley) moment congruent-states)
+  ;; Todo implement more efficient state generation
+  (call-next-method))
+
+(defmethod generate-states ((m temperley) vertices previous-state moment)
+  ;; Todo implement more efficient state generation
+  (call-next-method))
