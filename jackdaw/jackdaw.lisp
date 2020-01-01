@@ -1,14 +1,62 @@
+(cl:defpackage #:jackdaw
+  (:use #:common-lisp)
+  (:export
+   "GENERATIVE-MODEL" "V" "RECURSIVE" "ACCUMULATOR" "NGRAM-ACCUMULATOR"
+   "ONE-SHOT"
+   "DEFMODEL" "TRANSITION" "GENERATE-STATES"
+   "DISTRIBUTION" "BERNOUILLI" "CATEGORICAL" "UNIFORM"
+   "OBSERVE" "PROBABILITY" "PROBABILITIES"
+   "+INACIVE+" "+SINGLETON+")
+  (:documentation "A toolkit for defining dynamic Bayesian networks 
+with congruency constraints."))
+
+(cl:in-package #:jackdaw)
+
 (defvar +inactive+ '*)
 (defvar +singleton+ (list +inactive+))
 (defvar +ngram-filler+ '*)
 
-(defclass generative-model (graphs::dag)
+(defclass generative-model (dag)
   ((training? :accessor training? :initform nil)
-   (edge-table :reader edge-table :type 'hastable)
-   (variables :reader variables :type 'list)
    (observed :reader observed :initform nil :type 'list)
    (constraints :reader constraints :type 'hashtable)
    (distributions :reader distributions :type 'hashtable)))
+
+(defclass dag ()
+  ((vertices :initarg :vertices :accessor vertices)
+   (edge-table :initarg :edge-table :reader edge-table :type 'hastable)))
+
+(defmethod edges ((m dag) vertex)
+  (gethash vertex (edge-table m)))
+
+(define-condition dag-contains-cycle (error) ())
+
+(defmethod topological-sort ((graph dag)
+			     &optional
+			       (vertices (vertices graph))
+			       (visited (make-hash-table))
+			       result)
+  "Sort the vertices of the graph represented by EDGES topologically. Return a list
+of vertex indices."
+  (if (null vertices) result
+      (let ((vertex (car vertices))
+	    (remaining (cdr vertices)))
+	(topological-sort graph remaining visited (visit graph vertex visited result)))))
+
+(defmethod visit ((graph dag) vertex visited result)
+  "A node is a CONS whose CDR is its children and whose CAR is another
+CONS the CAR of which is its mark and whose CDR is the a feature index."
+  (let ((children (edges graph vertex)))
+    (case (gethash vertex visited :no)
+      (:yes result)
+      (:in-progress
+       (error 'dag-contains-cycle))
+      (:no
+       (progn
+	 (setf (gethash vertex visited) :in-progress)
+	 (let ((result (topological-sort graph children visited result)))
+	   (setf (gethash vertex visited) :yes)
+	   (cons vertex result)))))))
 
 (defun constraint-argument (v)
     "Given a keyword representation of a variable, return
@@ -103,19 +151,16 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 ;;		 (macroexpand `(,type ,v ,parents ,@args)))))
     `(defclass ,class ,superclasses
        ((distributions :initform (list ,@(apply #'append (reverse distributions))))
-	(variables :initform (list ,@(reverse variables)))
+	(vertices :initform (list ,@(reverse variables)))
 	(edge-table :initform ,edges)
 	(constraints :initform (list ,@(reverse constraints)))
 	,@direct-slots))))
 
 ;; Model mechanics
 
-(defmethod graphs:edges ((m generative-model) variable)
-  (gethash variable (edge-table m)))
-
 (defmethod constraint ((m generative-model) variable)
   "Return the congruency constraint associated with VARIABLE in model M."
-  (let ((p (position variable (variables m))))
+  (let ((p (position variable (vertices m))))
     (elt (constraints m) p)))
 
 (defmethod distribution ((m generative-model) variable)
@@ -123,7 +168,7 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 
 (defmethod marginal-params ((m generative-model))
   (let* ((horizontal-dependencies
-	 (mapcar (lambda (v) (get-horizontal-arguments (graphs:edges m v))) (variables m))))
+	 (mapcar (lambda (v) (get-horizontal-arguments (edges m v))) (vertices m))))
     (remove-duplicates (apply #'append horizontal-dependencies))))
 
 (defmethod a-priori-congruent ((m generative-model) variable parents-state)
@@ -147,7 +192,7 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 	 (training? (training? m))
 	 (new-states))
     (dolist (parents-state parent-states new-states)
-      (let* ((probability (gethash 'probability parents-state))
+      (let* ((probability (gethash :probability parents-state))
 	     (a-priori (a-priori-congruent m vertex parents-state))
 	     (a-posteriori (a-posteriori-congruent m vertex parents-state moment a-priori))
 	     (distribution (unless training?
@@ -167,57 +212,51 @@ congruent states of ~A during training." vertex))
 		(new-state (copy-hash-table parents-state)))
 	    (setf (gethash vertex new-state) s)
 	    (unless training?
-	      (setf (gethash 'probability new-state) (* probability s-probability)))
+	      (setf (gethash :probability new-state) (pr:mul probability s-probability)))
 	    (push new-state new-states)))))))
-
-(defmethod moment ((m temperley) moment congruent-states)
-  ;; Todo implement more efficient state generation
-  (call-next-method))
-
-(defmethod generate-states ((m temperley) vertices previous-state moment)
-  ;; Todo implement more efficient state generation
-  (call-next-method))
 
 (defmethod rotate-state ((m generative-model) state &key (keep-trace? t))
   "\"Rotate\" a state. In the a priori version of a state, every parameter
 :X is renamed :^X and variables of the form :^X in STATE are dropped."
   (let ((new-state (make-hash-table)))
-    (setf (gethash 'probability new-state) (gethash 'probability state))
+    (setf (gethash :probability new-state) (gethash :probability state))
     (when keep-trace?
       (let ((trace (make-hash-table)))
-	(dolist (key (cons 'trace (marginal-params m)))
+	(dolist (key (cons :trace (marginal-params m)))
 	  (setf (gethash key trace) (gethash key state)))
-	(setf (gethash 'trace new-state) trace)))
+	(setf (gethash :trace new-state) trace)))
     (dolist (variable (marginal-params m) new-state)
       (setf (gethash (apriori variable) new-state) (gethash variable state)))))
 
 (defun trace-back (state variable &optional trace)
   (let ((new-trace (cons (gethash variable state) trace))
-	(previous-state (gethash 'trace state)))
+	(previous-state (gethash :trace state)))
     (if (null previous-state)
 	new-trace
 	(trace-back previous-state variable new-trace))))
 
 (defmethod root-state ((m generative-model))
   (let ((state (make-hash-table)))
-    (setf (gethash 'probability state) 1)
+    (setf (gethash :probability state) (pr:in 1))
     (dolist (variable (mapcar #'apriori (marginal-params m)) state)
       (setf (gethash variable state) +inactive+))))
 
 (defun marginalize (states variables &optional (marginal (make-hash-table :test #'equal)))
   (dolist (state states)
-    (let* ((state-prob (gethash 'probability state))
-	   (trace (gethash 'trace state))
+    (let* ((state-prob (gethash :probability state))
+	   (trace (gethash :trace state))
 	   (key (loop for v in variables collect (gethash v state)))
-	   (marginal-prob (car (gethash key marginal (cons 0 trace)))))
-      (setf (gethash key marginal) (cons (+ state-prob marginal-prob) trace)))))
+	   (marginal-prob (gethash key marginal))
+	   (new-prob (if (null marginal-prob) (car state-prob)
+			 (pr:add (car state-prob) marginal-prob))))
+      (setf (gethash key marginal) (cons new-prob trace)))))
 
 (defun marginal->states (marginal variables)
   (let ((states))
     (maphash (lambda (state-key p)
 	       (let ((state (make-hash-table)))
-		 (setf (gethash 'probability state) (car p))
-		 (setf (gethash 'trace state) (cdr p))
+		 (setf (gethash :probability state) (car p))
+		 (setf (gethash :trace state) (cdr p))
 		 (loop for v in variables
 		    for s in state-key do
 		      (setf (gethash v state) s))
@@ -238,7 +277,7 @@ congruent states of ~A during training." vertex))
   "Call GENERATE-STATES on topologically sorted list of variables, from which
 inactive variables have been pruned."
   (generate-states m (get-vertical-arguments
-		      (graphs:topological-sort m)) previous-state
+		      (topological-sort m)) previous-state
 		      moment))
 
 (defun copy-hash-table (hash-table)
@@ -251,3 +290,5 @@ inactive variables have been pruned."
        using (hash-value value)
        do (setf (gethash key ht) value)
        finally (return ht))))
+
+

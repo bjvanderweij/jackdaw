@@ -1,4 +1,4 @@
-
+(cl:in-package #:jackdaw)
 ;;;;;;;;;;;;;;;;;;; Probability distributions ;;;;;;;;;;;;;;;;;;;
 
 
@@ -20,7 +20,7 @@ corresponding to variables that D is conditioned on. If D is not conditioned
 on anything, the context may be set to NIL. This means that each parameter 
 must be a list of length 1 (the CDR of which is NIL)."
   (dolist (parameter parameters)
-    (setf (gethash (car parameter) (parameters d)) (cdr parameter)))
+    (setf (gethash (car parameter) (p d)) (cdr parameter)))
   (let ((contexts (remove-duplicates (mapcar #'cdar parameters) :test #'equal)))
     (dolist (context contexts)
       (let ((sum 0))
@@ -66,7 +66,7 @@ the implementation does not support this."))
 
 
 (defmethod probability ((d categorical) arguments symbol)
-  (gethash (cons symbol arguments) (parameters d)))
+  (gethash (cons symbol arguments) (p d)))
 
 (defmethod probabilities ((d distribution) parents-state congruent-states)
   (let* ((table (make-hash-table :test #'equal))
