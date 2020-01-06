@@ -1,3 +1,5 @@
+(cl:in-package #:jackdaw)
+
 (defclass idyom-ppm (categorical)
   ((alphabet :reader alphabet :initform nil)
    (escape :reader escape :initform :c)
@@ -54,16 +56,27 @@
 		 :alphabet (alphabet d)))
 
 (defmodel downbeat-distance (generative-model)
-  ((observed :initform '(:B '(:IOI))) ;; observed :variable :input
-   (ioi-domain :initarg :ioi-domain :reader ioi-domain
+  ((ioi-domain :initarg :ioi-domain :reader ioi-domain
 	       :initform '(1 2 3 4))
    (meter-domain :initarg :meter-domain :reader meter-domain
-		 :initform '((2 3) (3 2))))
-  ((one-shot :Meter (:^meter) (meter-domain model))
-   (accumulator :B (:^b :meter)
-		(loop for ioi in (ioi-domain model) collect
-		     (+ (mod $^b (car $meter)) ioi))
-		(loop for phase below (car $meter) collect phase)
-		:observe (+ (mod $^b (car $meter)) @ioi)
-		:observe-init @ioi))
+		 :initform '((2 3) (3 2)))
+   (hidden :initform '(m p0)))
+  ((M (^m)
+      (one-shot (meter-domain model))
+      :inputs (meter)
+      :posterior-constraint (recursive t (equal $m <meter)))
+   (B (^b m)
+      (accumulator (loop for ioi in (ioi-domain model) collect
+			(+ (mod (car $^b) (car $m)) ioi))
+		   (loop for phase below (car $m) collect phase))
+      :inputs (ioi)
+      :posterior-constraint
+      (recursive (eq (car $b) (+ (mod (car $^b) (car $m)) <ioi)) t))
+   (B-out (b) (deterministic (car $b)))
+   (M-out (m) (deterministic (format nil "~a/~a" (car $m) (cadr $m))))
+   (P0 (^p0 b) ;; Observe this to constrain the first phase.
+       (one-shot (list $b))
+       :inputs (ioi) :posterior-constraint (recursive t (eq (car $b) <ioi))))
   ())
+
+
