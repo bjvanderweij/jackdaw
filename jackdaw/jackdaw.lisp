@@ -19,6 +19,19 @@ with congruency constraints."))
 (defparameter *sequence* nil)
 (defparameter *event* nil)
 
+
+(defmacro defreader ((type model data) &body body)
+  `(defmethod read-model ((,model ,type) stream)
+     (let ((,data (read stream)))
+       ,@body)))
+
+(defmacro defwriter ((type model) data)
+  `(defmethod write-model ((,model ,type) &optional stream)
+     (let ((data ,data))
+       (unless (null stream) (write data :stream stream))
+       data)))
+     
+
 (defclass generative-model (dag)
   ((training? :accessor training? :initform nil)
    (output :accessor output :initarg :output :initform nil)
@@ -83,13 +96,13 @@ given :X, return <X"
 (defun getarg (key state)
   "Given a variable identifier, obtain
 its value from a model state."
-  (gethash key state))
+  (cond
+    ((hash-table-p state)
+     (gethash key state))
+    ((listp state)
+     (getf state (tokeyword key)))))
 ;;(getf state key))
 
-(defun getinput (key moment)
-  "Given a keyword representation of an input, obtain
-its value from a moment."
-  (getf moment (tokeyword key)))
 
 (defun apriori (v)
   (intern (format nil "^~A" (symbol-name v)) :jackdaw))
@@ -119,7 +132,7 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 	    ,@(when (member (apriori self) parents)
 		    `(($^self ,(constraint-argument (apriori self)))))
 	      ,@(loop for i in inputs collect
-		     (list (input-argument i) `(getinput ',i moment))))
+		     (list (input-argument i) `(getarg ',i moment))))
 	      ,constraint)))
 
 (defmacro deterministic (congruent-value) `(list ,congruent-value))
@@ -225,6 +238,7 @@ To observe everything, call without variables."
 	 (training? (training? m))
 	 (final? (eq (length variables) (length (vertices m)))) ;; warning: bit of a hack
 	 (new-states))
+    (format t "Generating ~a.~%" variable)
     (dolist (parents-state parent-states new-states)
       (let* ((probability (gethash :probability parents-state))
 	     (a-priori (a-priori-congruent m variable parents-state))
@@ -248,6 +262,8 @@ congruent states of ~A during training." variable))
 	    (when final? (write-state m new-state congruent))
 	    (when congruent
 	      (let ((s-probability (unless training? (gethash s distribution))))
+		(when (null s-probability)
+		  (warn "State ~a not found in distribution." s))
 		(unless training?
 		  (setf (gethash :probability new-state) (pr:mul probability s-probability)))
 		(push new-state new-states)))))))))
@@ -266,9 +282,9 @@ congruent states of ~A during training." variable))
       (setf (gethash (apriori variable) new-state) (gethash variable state)))))
 
 (defmethod write-state ((m generative-model) state congruent)
-  (format (output m) "~a,~a~{,~a~^~},~a~%" *sequence* *event*
-	  (loop for v in (outputvars m) collect (gethash v state))
-	  congruent))
+  (format (output m) "~a,~a~{,~a~^~},~a,~a~%" *sequence* *event*
+	  (loop for v in (outputvars m) collect (getarg v state))
+	  congruent (gethash :probability state)))
 
 (defun trace-back (state variable &optional trace)
   (let ((new-trace (cons (gethash variable state) trace))
@@ -278,12 +294,15 @@ congruent states of ~A during training." variable))
 	(trace-back previous-state variable new-trace))))
 
 (defmethod root-state ((m generative-model))
+  "The root state. Root nodes of Bayesian networks must be conditioned
+on a root state."
   (let ((state (make-hash-table)))
     (setf (gethash :probability state) (pr:in 1))
     (dolist (variable (mapcar #'apriori (marginal-params m)) state)
       (setf (gethash variable state) +inactive+))))
 
 (defun marginalize (states variables &optional (marginal (make-hash-table :test #'equal)))
+  "Given a list of states, create a hash table representing a marginal distribution."
   (dolist (state states)
     (let* ((state-prob (gethash :probability state))
 	   (trace (gethash :trace state))
@@ -306,6 +325,21 @@ congruent states of ~A during training." variable))
 	     marginal)
     states))
 
+(defmethod process-dataset ((m generative-model) dataset)
+  (let* ((sequence (car dataset))
+	 (*sequence* (car sequence)))
+    (process-sequence m (cdr sequence)))
+  (unless (null (cdr dataset))
+    (process-dataset m (cdr dataset))))
+	 
+(defmethod process-sequence ((m generative-model) moments
+			     &optional (event 0) (congruent-states (list (root-state m))))
+  (let ((*event* event)
+	(new-congruent-states (transition m (car moments) congruent-states)))
+    (if (null (cdr moments))
+	new-congruent-states
+	(process-sequence m (cdr moments) (1+ event) new-congruent-states))))
+
 (defmethod transition ((m generative-model) moment congruent-states)
   (let ((marginal (make-hash-table :test #'equal))
 	(marginal-variables (mapcar #'apriori (marginal-params m))))
@@ -326,6 +360,16 @@ inactive variables have been pruned."
       (warn "Moment ~a cold not be generated." moment))
     congruent-states))
 
+(defwriter (generative-model m)
+    (let ((params))
+      (loop for (var dist) on (distributions m) by #'cddr do
+	   (setf (getf params var) (serialize dist)))))
+
+(defreader (generative-model m distributions)
+  (loop for (var dist) in distributions by #'caddr do
+       (with-input-from-string (s (write-to-string dist))
+	 (deserialize (gethash var (distributions m)) s))))
+
 (defun copy-hash-table (hash-table)
   (let ((ht (make-hash-table 
              :test (hash-table-test hash-table)
@@ -337,4 +381,14 @@ inactive variables have been pruned."
        do (setf (gethash key ht) value)
        finally (return ht))))
 
+(defun hash-table->alist (hashtab)
+  (let ((alist '()))
+    (maphash #'(lambda (key value) (setq alist (cons (list key value) alist)))
+             hashtab)
+    alist))
 
+(defun alist->hash-table (alist &key (test #'eql))
+  (let ((hashtable (make-hash-table :test test)))
+    (mapc #'(lambda (x) (setf (gethash (car x) hashtable) (cadr x)))
+          alist)
+    hashtable))

@@ -1,4 +1,5 @@
 (cl:in-package #:jackdaw)
+
 ;;;;;;;;;;;;;;;;;;; Probability distributions ;;;;;;;;;;;;;;;;;;;
 
 
@@ -12,6 +13,28 @@
   ((category-counts :accessor category-counts :initform (make-hash-table :test #'equal))
    (p :reader p :initform (make-hash-table :test #'equal))))
 (defclass uniform (distribution) ())
+
+(defmethod write-model ((d distribution) stream))
+
+(defmethod read-model ((d distribution) stream))
+
+(defmethod write-model ((d bernouilli) stream)
+  (write (list (p d) (symbols d)) :stream stream))
+
+(defmethod read-model ((d bernouilli) stream)
+  (let* ((data (read stream))
+	 (p (first data))
+	 (symbols (second data)))
+    (setf (p d) p
+	  (symbols d) symbols)))
+
+(defmethod write-model ((d categorical) stream)
+  (write (list (p d)) :stream stream))
+
+(defmethod read-model ((d categorical) stream)
+  (let* ((data (read stream))
+	 (p (alist->hash-table (first data))))
+    (setf (p d) p)))
 
 (defmethod initialize-instance :after ((d categorical) &key parameters)
   "Parameters must be supplied as an ALIST: a list with items (PARAM . PROB). 
@@ -49,7 +72,7 @@ must be a list of length 1 (the CDR of which is NIL)."
 (defmethod next-sequence ((d distribution) training?)
   "Called after each training sequence. May be used to update
 model state.")
-       
+
 (defmethod probability ((d uniform) arguments symbol)
   (pr:in 1))
 
@@ -79,3 +102,12 @@ the implementation does not support this."))
 	 (setf (gethash s table)
 	       (pr:div p sum)))
     table))
+
+
+
+
+
+
+
+
+
