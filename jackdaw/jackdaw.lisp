@@ -12,35 +12,66 @@ with congruency constraints."))
 
 (cl:in-package #:jackdaw)
 
+;; Special symbols
+
 (defvar +inactive+ '*)
 (defvar +singleton+ (list +inactive+))
 (defvar +ngram-filler+ '*)
 
+;; Global parameters for CSV output writing.
+
 (defparameter *sequence* nil)
 (defparameter *event* nil)
 
+;; Utility
 
-(defmacro defreader ((type model data) &body body)
-  `(defmethod read-model ((,model ,type) stream)
+(defun copy-hash-table (hash-table)
+  (let ((ht (make-hash-table 
+             :test (hash-table-test hash-table)
+             :rehash-size (hash-table-rehash-size hash-table)
+             :rehash-threshold (hash-table-rehash-threshold hash-table)
+             :size (hash-table-size hash-table))))
+    (loop for key being each hash-key of hash-table
+       using (hash-value value)
+       do (setf (gethash key ht) value)
+       finally (return ht))))
+
+(defun hash-table->alist (hashtab)
+  (let ((alist '()))
+    (maphash #'(lambda (key value) (setq alist (cons (list key value) alist)))
+             hashtab)
+    alist))
+
+(defun alist->hash-table (alist &key (test #'equal))
+  (let ((hashtable (make-hash-table :test test)))
+    (mapc #'(lambda (x) (setf (gethash (car x) hashtable) (cadr x)))
+          alist)
+    hashtable))
+
+;; Object serialization helper macros.
+
+(defmacro defreader (type (model data) &body body)
+  `(defmethod deserialize ((,model ,type) stream)
      (let ((,data (read stream)))
        ,@body)))
 
-(defmacro defwriter ((type model) data)
-  `(defmethod write-model ((,model ,type) &optional stream)
+(defmacro defwriter (type (model) data)
+  `(defmethod serialize ((,model ,type) &optional stream)
      (let ((data ,data))
        (unless (null stream) (write data :stream stream))
        data)))
-     
+
+;; Objects
 
 (defclass generative-model (dag)
-  ((training? :accessor training? :initform nil)
-   (output :accessor output :initarg :output :initform nil)
-   (outputvars :accessor outputvars :initarg :outputvars :initform nil)
+  ((output :accessor output :initarg :output :initform nil)
+   (outputvars :accessor outputvars :initform nil :initarg :outputvars)
    (hidden :accessor hidden :initform nil)
+   (required-fields :reader required-fields :initform nil)
    (observed :reader observed :initform nil :type 'list)
    (prior-constraints :reader prior-constraints :type 'hashtable)
    (posterior-constraints :reader posterior-constraints :type 'hashtable)
-   (distributions :reader distributions :type 'hashtable)))
+   (distributions :accessor distributions :type 'list)))
 
 (defclass dag ()
   ((vertices :initarg :vertices :accessor vertices)
@@ -78,6 +109,20 @@ CONS the CAR of which is its mark and whose CDR is the a feature index."
 	   (setf (gethash vertex visited) :yes)
 	   (cons vertex result)))))))
 
+;; Model serialization
+
+(defwriter generative-model (m)
+    (let ((params))
+      (loop for (var dist) on (distributions m) by #'cddr collect
+	   (setf (getf params var) (serialize dist)))
+      params))
+(defreader generative-model (m distributions)
+  (loop for (var dist) on distributions by #'cddr do
+       (with-input-from-string (s (write-to-string dist))
+	 (deserialize (getf (distributions m) var) s))))
+
+;; Representation of states and variable identifiers
+
 (defun constraint-argument (v)
     "Given a keyword representation of a variable, return
 its congruency constraint function symbol. For example,
@@ -98,11 +143,13 @@ given :X, return <X"
 its value from a model state."
   (cond
     ((hash-table-p state)
-     (gethash key state))
+     (multiple-value-bind (v found?)
+	 (gethash key state)
+       (unless found? (warn "~A not found in state or moment." key))
+       v))
     ((listp state)
      (getf state (tokeyword key)))))
 ;;(getf state key))
-
 
 (defun apriori (v)
   (intern (format nil "^~A" (symbol-name v)) :jackdaw))
@@ -145,20 +192,28 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 (defmacro one-shot (constraint)
   `(recursive (list $^self) ,constraint))
 
-(defmacro accumulator (constraint initialization-constraint)
+(defmacro accumulator (constraint &optional initialization-constraint)
   `(recursive
     (mapcar (lambda (s) (cons s $^self)) ,constraint)
-    (mapcar #'list ,initialization-constraint)))
+    (mapcar #'list ,(or initialization-constraint constraint))))
 
-(defmacro ngram-accumulator (constraint initialization-constraint n)
+(defmacro ngram-accumulator (constraint &optional initialization-constraint n)
   `(recursive 
     (mapcar (lambda (s) (cons s (subseq $^self 0 (1- ,n)))) ,constraint)
     (mapcar (lambda (s)	(cons s (loop repeat (1- ,n) collect +ngram-filler+)))
-	    ,initialization-constraint)))
+	    ,(or initialization-constraint constraint))))
 
-;; Model definition 
+(defmacro chain (constraint dependencies)
+  `(if (not (every (lambda (s) (eq s +inactive+))
+		   (list ,@(mapcar #'constraint-argument dependencies))))
+       ,constraint
+       +singleton+))
+		 
 
-(defmacro defmodel (class superclasses direct-slots variable-specs distribution-specs)
+;; Model definition macro
+
+(defmacro defmodel (class superclasses direct-slots variable-specs distribution-specs
+		    &key required-fields)
   (let* ((edges (make-hash-table))
 	 (variables) (posterior-constraints) (prior-constraints)
 	 (distributions))
@@ -177,12 +232,12 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 		(macroexpand `(make-constraint ,v ,parents ,posterior-constraint ,inputs)))
 	      posterior-constraints))))
     (loop for specification in distribution-specs do
-	 (destructuring-bind (type v parents &rest args)
+	 (destructuring-bind (v parents (type &rest args))
 	     specification
 	   (setf (gethash v edges)
 		 (union (gethash v edges) parents))
-	   (push `(,v (make-instance ',type :arguments (list ,@parents)
-				     :variable ,v ,@args))
+	   (push `(',v (make-instance ',type :arguments '(,@parents)
+				      :variable ',v ,@args))
 		 distributions)))
     `(defclass ,class ,superclasses
        ((distributions :initform (list ,@(apply #'append (reverse distributions))))
@@ -190,9 +245,15 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 	(edge-table :initform ,edges)
 	(prior-constraints :initform (list ,@(reverse prior-constraints)))
 	(posterior-constraints :initform (list ,@(reverse posterior-constraints)))
+	(required-fields :initform '(,@required-fields))
 	,@direct-slots))))
 
 ;; Model mechanics
+
+(defmethod initialize-instance :after ((m generative-model) &key)
+  (when (not (every (lambda (s) (slot-boundp m s)) (required-fields m)))
+    (error "~A requires ~{~a~^,~} to be provided as initialization arguments."
+	   (type-of m) (required-fields m))))
 
 (defmethod prior-constraint ((m generative-model) variable)
   "Return the congruency constraint associated with VARIABLE in model M."
@@ -235,37 +296,28 @@ To observe everything, call without variables."
 			    (list previous-state)
 			    (generate-states m (cdr variables) previous-state moment)))
 	 (variable (car variables))
-	 (training? (training? m))
 	 (final? (eq (length variables) (length (vertices m)))) ;; warning: bit of a hack
 	 (new-states))
-    (format t "Generating ~a.~%" variable)
+    ;;(format t "Generating ~a.~%" variable)
     (dolist (parents-state parent-states new-states)
       (let* ((probability (gethash :probability parents-state))
 	     (a-priori (a-priori-congruent m variable parents-state))
-	     (a-posteriori (a-posteriori-congruent m variable parents-state moment a-priori))
-	     (distribution (unless training?
-			     (probabilities (distribution m variable)
-					    parents-state
-					    a-priori))))
+	     (distribution (probabilities (distribution m variable)
+					  parents-state a-priori)))
 	(when (eq (length a-priori) 0)
 	  (warn "~A has no a priori congruent states." variable))
-	(when (and training? (> (length a-posteriori) 1))
-	  (warn "Don't know what to do with multiple a posteriori 
-congruent states of ~A during training." variable))
-;;	(when (eq (length a-posteriori) 0)
-;;	  (warn "~A has no a posteriori congruent states." variable))
-	;(observe (distribution m variable) parents-state a-posteriori training?)
 	(dolist (s a-priori)
 	  (let ((congruent (a-posteriori-congruent m variable parents-state moment s))
-		(new-state (copy-hash-table parents-state)))
+		(new-state (copy-hash-table parents-state))
+		(s-probability (pr:mul probability (gethash s distribution))))
 	    (setf (gethash variable new-state) s)
-	    (when final? (write-state m new-state congruent))
-	    (when congruent
-	      (let ((s-probability (unless training? (gethash s distribution))))
+	    (when final? (write-state m new-state congruent s-probability))
+	    (when congruent ;; TODO: always add state, keep track of whether it's congruent
+	      ;; (less efficient though...)
+	      (let ((s-probability (gethash s distribution)))
 		(when (null s-probability)
 		  (warn "State ~a not found in distribution." s))
-		(unless training?
-		  (setf (gethash :probability new-state) (pr:mul probability s-probability)))
+		(setf (gethash :probability new-state) (pr:mul probability s-probability))
 		(push new-state new-states)))))))))
 
 (defmethod rotate-state ((m generative-model) state &key (keep-trace? t))
@@ -281,10 +333,18 @@ congruent states of ~A during training." variable))
     (dolist (variable (marginal-params m) new-state)
       (setf (gethash (apriori variable) new-state) (gethash variable state)))))
 
-(defmethod write-state ((m generative-model) state congruent)
+(defmethod write-header ((m generative-model))
+  (format (output m) "sequence,event~{,~a~^~},congruent,probability~%" 
+	  (loop for v in (if (null (outputvars m))
+			     (vertices m)
+			     (outputvars m)) collect (string-downcase (symbol-name v)))))
+
+(defmethod write-state ((m generative-model) state congruent probability)
   (format (output m) "~a,~a~{,~a~^~},~a,~a~%" *sequence* *event*
-	  (loop for v in (outputvars m) collect (getarg v state))
-	  congruent (gethash :probability state)))
+	  (loop for v in (if (null (outputvars m))
+			     (vertices m)
+			     (outputvars m)) collect (getarg v state))
+	  congruent probability))
 
 (defun trace-back (state variable &optional trace)
   (let ((new-trace (cons (gethash variable state) trace))
@@ -325,7 +385,8 @@ on a root state."
 	     marginal)
     states))
 
-(defmethod process-dataset ((m generative-model) dataset)
+(defmethod process-dataset ((m generative-model) dataset &optional write-header?)
+  (when write-header? (write-header m))
   (let* ((sequence (car dataset))
 	 (*sequence* (car sequence)))
     (process-sequence m (cdr sequence)))
@@ -333,12 +394,17 @@ on a root state."
     (process-dataset m (cdr dataset))))
 	 
 (defmethod process-sequence ((m generative-model) moments
-			     &optional (event 0) (congruent-states (list (root-state m))))
-  (let ((*event* event)
-	(new-congruent-states (transition m (car moments) congruent-states)))
+			     &optional
+			       write-header?
+			       (event 0)
+			       (congruent-states (list (root-state m))))
+  (when write-header? (write-header m))
+  (let* ((*event* event)
+	 (new-congruent-states (transition m (car moments) congruent-states)))
     (if (null (cdr moments))
-	new-congruent-states
-	(process-sequence m (cdr moments) (1+ event) new-congruent-states))))
+	(dolist (v (vertices m) new-congruent-states)
+	  (next-sequence (distribution m v) new-congruent-states))
+	(process-sequence m (cdr moments) nil (1+ event) new-congruent-states))))
 
 (defmethod transition ((m generative-model) moment congruent-states)
   (let ((marginal (make-hash-table :test #'equal))
@@ -360,35 +426,3 @@ inactive variables have been pruned."
       (warn "Moment ~a cold not be generated." moment))
     congruent-states))
 
-(defwriter (generative-model m)
-    (let ((params))
-      (loop for (var dist) on (distributions m) by #'cddr do
-	   (setf (getf params var) (serialize dist)))))
-
-(defreader (generative-model m distributions)
-  (loop for (var dist) in distributions by #'caddr do
-       (with-input-from-string (s (write-to-string dist))
-	 (deserialize (gethash var (distributions m)) s))))
-
-(defun copy-hash-table (hash-table)
-  (let ((ht (make-hash-table 
-             :test (hash-table-test hash-table)
-             :rehash-size (hash-table-rehash-size hash-table)
-             :rehash-threshold (hash-table-rehash-threshold hash-table)
-             :size (hash-table-size hash-table))))
-    (loop for key being each hash-key of hash-table
-       using (hash-value value)
-       do (setf (gethash key ht) value)
-       finally (return ht))))
-
-(defun hash-table->alist (hashtab)
-  (let ((alist '()))
-    (maphash #'(lambda (key value) (setq alist (cons (list key value) alist)))
-             hashtab)
-    alist))
-
-(defun alist->hash-table (alist &key (test #'eql))
-  (let ((hashtable (make-hash-table :test test)))
-    (mapc #'(lambda (x) (setf (gethash (car x) hashtable) (cadr x)))
-          alist)
-    hashtable))
