@@ -199,6 +199,12 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 		   (list ,@(mapcar #'constraint-argument dependencies))))
        ,constraint
        +singleton+))
+
+(defmacro chain-posterior (constraint dependencies)
+  `(if (not (every (lambda (s) (eq s +inactive+))
+		   (list ,@(mapcar #'constraint-argument dependencies))))
+       ,constraint
+       t))
 		 
 
 ;; Model definition macro
