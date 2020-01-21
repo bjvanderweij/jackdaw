@@ -85,9 +85,9 @@ must be a list of length 1 (the CDR of which is NIL)."
       (let ((sum))
 	(maphash (lambda (param v)
 		   (when (equal (cdr param) context)
-		     (setf sum (apply #'pr:add (cons v (unless (null sum) (list sum)))))))
+		     (setf sum (apply #'+ (cons v (unless (null sum) (list sum)))))))
 		 (p d))
-	(when (> (abs (- (pr:out sum) 1)) 1.0e-10) ;; Check that sum is approximately one.
+	(when (> (abs (- sum 1)) 1.0e-10) ;; Check that sum is approximately one.
 	  (warn "Parameters of ~A sum to ~A, not to approximately 1.0, for context ~A."
 		(dist-var d) sum context))))))
 
