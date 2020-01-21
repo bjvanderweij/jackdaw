@@ -17,6 +17,7 @@
 	 "Probability of a phase of zero. Must be > 0 and <= 1.")))
 (defclass note (distribution)
   ((p :initarg :p :reader p)))
+(defclass temperley-ioi (note) ())
 
 ;; Serializers
 
@@ -71,7 +72,7 @@
     (pr:in
      (if (eq symbol 0) p-zero
 	 (/ (- 1 p-zero) (1- interval))))))
-
+	
 (defun beat-location (period subdivision phase)
   (floor (/ (* phase period) subdivision)))
 
@@ -125,15 +126,15 @@
 			   ((member $tph (list $db $tb1 $tb2)) 1)
 			   (t 0)))))
    (N (^n) (recursive (list t nil) (list t))))
-  ((U nil (bernouilli :symbols '(2 3)))
-   (L nil (bernouilli :symbols '(2 3)))
+  ((U nil (bernouilli :symbols '(3 2)))
+   (L nil (bernouilli :symbols '(3 2)))
    (T (^t) (tactus-interval))
    (BPH (u) (bar-phase))
    (TPH (t) (tactus-phase))
    (DB (t) (beat-deviation :subdivision 2))
    (TB1 (t) (beat-deviation :subdivision 3))
    (TB2 (t) (beat-deviation :subdivision 3 :phase 2))
-   (N ('bs) (note))))
+   (N (bs) (note))))
 
 (defmethod initialize-instance ((m temperley)
 				&key (u .24) (l .22)
@@ -163,36 +164,66 @@ a beat by N pips, where N is the position in the list."
 	(slot-value (distribution m 'TB1) 'p) deviation
 	(slot-value (distribution m 'TB2) 'p) deviation
 	(slot-value (distribution m 'N) 'p) note))
-	
 						
-(defmodel symbolic-temperley (generative-model)
+(defmodel event-based-symbolic-temperley (generative-model)
   ((observed :initform '(:n))
-   (tacti :initarg :tacti :reader tacti
-	  :initform '(4 6 8 12))
-   (max-beat-dev :initarg :max-beat-dev :reader max-beat-dev :initform 0));3))
-  ((U (^u) (one-shot '(2 3)))
-   (L (^l) (one-shot '(2 3)))
-   (T (^t) (one-shot (tacti model))) ; changed to one-shot
-   (BPH (^bph tph u)
-	(recursive (if (eq $tph 0)
-		       (list (mod (1+ $^bph) $u))
-		       (list $^bph))
-		   (loop for bph below $u collect bph)))
-   (TPH (^tph ^t t)
-	(recursive (list (mod (1+ $^tph) $^t))
-		   (loop for tph below $t collect tph)))
-   (BS (t l tph bph) ; $t and $l replace the beat locations
-       (deterministic (cond ((and (eq $tph 0) (eq $bph 0)) 3)
-			    ((eq $tph 0) 2)
-			    ((eq (mod $tph (/ $t $l)) 0) 1)
-			    (t 0))))
-   (N (^n) (recursive (list t nil) (list t))))
-  ((U () (bernouilli :symbols '(2 3)))
-   (L () (bernouilli :symbols '(2 3)))
-   (T (^t) (tactus-interval))
+   (tacti :reader tacti)
+   (ioi-domain :initarg :ioi-domain :reader ioi-domain))
+  ((U (^u) (one-shot '(2 3)) :inputs (u) :posterior-constraint (eq $u <u))
+   (L (^l) (one-shot '(2 3)) :inputs (l) :posterior-constraint (eq $l <l))
+   (T (^t) (one-shot (tacti model))
+      :inputs (t) :posterior-constraint (eq $t <t)) ; changed to one-shot
+   (BPH (^bph u) (one-shot (loop for bph below $u collect bph))
+	 :inputs (bph) :posterior-constraint (eq $bph <bph))
+   (TPH (^tph t) (one-shot (loop for tph below $t collect tph))
+	      :inputs (tph) :posterior-constraint (eq $tph <tph))
+   (PH (^ph ioi u t bph tph)
+       (recursive (deterministic (mod (+ $^ph $ioi) (* $u $t)))
+		  (deterministic (+ $tph (* $bph $t)))))
+   ;;:inputs (ioi)
+   ;;:posterior-constraint
+   ;;(recursive t (eq $ph <ioi)))
+   (IOI (^ph)
+	(chain (ioi-domain model) (^ph))
+	:inputs (ioi)
+	:posterior-constraint
+	(chain-posterior (eq <ioi $ioi) (^ph))))
+  ((U () (bernouilli :symbols '(3 2)))
+   (L () (bernouilli :symbols '(3 2)))
+   (T () (categorical))
    (BPH (u) (bar-phase))
    (TPH (t) (tactus-phase))
-   (N (bs) (note))))
+   (IOI (^ph t u l) (temperley-ioi))))
+
+(defmethod initialize-instance :after ((m event-based-symbolic-temperley)
+				&key u l t0 t-ph0 duple-ph0 triple-ph0 triple-ph1 note)
+  "T0 must be a list of pairs containing tactus and corresponding probability."
+  (setf (slot-value (distribution m 'U) 'p) u
+	(slot-value (distribution m 'L) 'p) l
+	(slot-value (distribution m 'BPH) 'duple) (list duple-ph0)
+	(slot-value (distribution m 'BPH) 'triple) (list triple-ph0 triple-ph1)
+	(slot-value (distribution m 'TPH) 'zero) t-ph0
+	(slot-value (distribution m 'IOI) 'p) note
+	(slot-value m 'tacti) (mapcar #'car t0))
+  (hide m 'U 'L 'T 'BPH 'TPH)
+  (loop for (interval p) in t0 do
+       (set-param (distribution m 'T) nil interval p)))
+
+(defun beat-salience ($ph $u $l $t)
+  (cond ((eq (mod $ph (* $u $t)) 0) 3)
+	((eq (mod $ph $t) 0) 2)
+	((eq (mod $ph (/ $t $l)) 0) 1)
+	(t 0)))
+
+(defmethod probability ((d temperley-ioi) arguments ioi)
+  (let (($^ph (first arguments)) ($t (second arguments))
+	($u (third arguments)) ($l (fourth arguments)))
+    ;; Product of probability of onset at SYMBOL
+    ;; and probabilities of no onsets at positions from PREVIOUS + 1 to
+    ;; SYMBOL - 1.
+    (pr:in (* (apply #'* (loop for interval from 1 below ioi collect
+			      (- 1 (elt (p d) (beat-salience (+ $^ph interval) $u $l $t)))))
+	      (elt (p d) (beat-salience (+ $^ph ioi) $u $l $t))))))
 
 (defmethod moment ((m temperley) moment congruent-states)
   ;; Todo implement more efficient state generation
@@ -201,3 +232,16 @@ a beat by N pips, where N is the position in the list."
 (defmethod generate-states ((m temperley) vertices previous-state moment)
   ;; Todo implement more efficient state generation
   (call-next-method))
+
+(defwriter event-based-symbolic-temperley (m)
+  (list (read-from-string (with-output-to-string (s) (call-next-method m s)))
+	(tacti m) (ioi-domain m)))
+(defreader event-based-symbolic-temperley (m data)
+  (let ((model (first data))
+	(tacti (second data))
+	(ioi-domain (third data)))
+    (with-input-from-string (s (write-to-string model))
+      (call-next-method m s)
+      (setf (slot-value m 'ioi-domain) ioi-domain)
+      (setf (slot-value m 'tacti) tacti))))
+
