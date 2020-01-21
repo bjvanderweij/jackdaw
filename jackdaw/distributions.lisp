@@ -143,7 +143,9 @@ this means that either "
   (multiple-value-bind (location found?)
       (gethash (cons context arguments) (locations d))
     (if found? location
-	(update-location d model (cdr context) arguments (car context)))))
+	(if (null context)
+	    (ppm:get-root)
+	    (update-location d model (cdr context) arguments (car context))))))
 
 (defmethod get-model ((d accumulator-model) arguments)
   "Obtain a PPM model for the current arguments. If it doesn't exist,
