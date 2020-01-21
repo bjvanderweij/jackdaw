@@ -16,7 +16,9 @@
       :posterior-constraint
       (recursive (eq (car $b) (+ (mod (car $^b) (car $m)) <ioi)) t))
    (B-out (b) (deterministic (car $b)))
-   (M-out (m) (deterministic (format nil "~a/~a" (car $m) (cadr $m))))
+   ;;(M-out (m) (deterministic (format nil "~a/~a" (car $m) (cadr $m))))
+   (period (m) (deterministic (car $m)))
+   (pulses (m) (deterministic (cadr $m)))
    (P0 (^p0 b) ;; Observe this to constrain the first phase.
        (one-shot (list (car $b)))
        :inputs (ioi) :posterior-constraint (recursive t (eq $p0 <ioi))))
@@ -39,16 +41,18 @@
 (defmethod initialize-instance :after ((m downbeat-distance)
 				       &key meter-params update-exclusion
 					 (mixtures t) order-bound (escape :c))
+  (assert (not (member 0 (ioi-domain m))) nil
+	  "0 may not be a member of the IOI domain.")
   (assert (or (null meter-params)
 	      (< (abs (- (apply #'+ (mapcar #'cadr meter-params)) 1)) 1e-10))
 	  nil "Meter probabilities do not sum to approximately one.")
   (let ((ppm-dist (distribution m 'b)))
     (setf (training? ppm-dist) (training? m)
-    (setf (slot-value ppm-dist 'mixtures) mixtures
+	  (slot-value ppm-dist 'mixtures) mixtures
 	  (slot-value ppm-dist 'escape) escape
 	  (slot-value ppm-dist 'update-exclusion) update-exclusion
-	  (slot-value ppm-dist 'order-bound) order-bound)))
-  (if (training? m) (funcall #'hide m) (funcall #'hide m '(M P0))) 
+	  (slot-value ppm-dist 'order-bound) order-bound))
+  (if (training? m) (funcall #'hide m) (funcall #'hide m 'M 'P0))
   (warn "Training is ~A." (if (training? m) "ON" "OFF"))
   (setf (slot-value m 'meter-domain) (mapcar #'car meter-params))
   (loop for (meter probability) in meter-params do
