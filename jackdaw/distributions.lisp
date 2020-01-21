@@ -91,6 +91,11 @@ must be a list of length 1 (the CDR of which is NIL)."
 	  (warn "Parameters of ~A sum to ~A, not to approximately 1.0, for context ~A."
 		(dist-var d) sum context))))))
 
+(defmethod initialize-instance :after ((d accumulator-model) &key)
+  (loop for p in (arguments d) if (apriori? p) do
+       (warn "~a has previous-moment arguments which is not supported at the
+moment. See NEXT-SEQUENCE for ACCUMULATOR-MODEL and TRANSITION, which ROTATEs
+states." (type-of d))))
 
 (defmethod spawn-ppm ((d accumulator-model))
   (make-instance
@@ -105,7 +110,7 @@ model state.")
 (defmethod next-sequence ((d accumulator-model) congruent-states)
   (loop for state in congruent-states do
        (let* ((sequence (getarg (apriori (dist-var d)) state))
-	      (arguments (mapcar (lambda (v) (getarg v state))
+	      (arguments (mapcar (lambda (v) (getarg (apriori v) state))
 				 (remove (dist-var d) (arguments d))))
 	      (model (get-model d arguments)))
 	 (update-location d model (cdr sequence) arguments (car sequence))
