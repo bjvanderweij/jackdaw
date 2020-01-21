@@ -268,6 +268,9 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 (defmethod hide ((m generative-model) &rest variables)
   "Hide VARIABLES. Make VARIABLES the only hidden variables. 
 To observe everything, call without variables."
+  (loop for v in variables if (not (member v (vertices m))) do
+       (warn "Hiding a variable, ~a, that is not part of the ~a model."
+	     v (type-of m)))
   (setf (hidden m) variables))
 
 (defmethod distribution ((m generative-model) variable)
