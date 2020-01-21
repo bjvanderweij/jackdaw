@@ -27,9 +27,10 @@
      (let ((model ,model-constructor))
        (unless (null read)
 	 (with-open-file (s read) (jackdaw::deserialize model s)))
-       (jackdaw::process-dataset model (retrieve-dataset dataset) t)
+       (jackdaw::process-dataset model ;(retrieve-dataset dataset) t)
+				 (sort (retrieve-dataset dataset) #'string< :key #'car) t)
        (unless (null freeze)
-	 (with-open-file (s freeze :direction :output :if-exists :overwrite
+	 (with-open-file (s freeze :direction :output :if-exists :supersede
 			    :if-does-not-exist :create)
 	   (jackdaw::serialize model s))))))
 
@@ -79,41 +80,64 @@ UID, and subsequent elements correspond to (cddr columns)."
 		(warn "Some events not found in composition ~a" uid))
 	      (cons uid events))))))
 
+(defun parse-or (arg &optional default)
+  (if (null arg) default (read-from-string arg)))
+
 (defun retrieve-dataset (path)
   (let ((data
 	 (fare-csv:with-rfc4180-csv-syntax ()
 	   (fare-csv:read-csv-stream (or path *standard-input*)))))
     (tabular->sequences data)))
 
-(defcli temperley ((output) (outputvars note deviation t-ph0 duple-ph0 triple-ph0 triple-ph1
-					t0 u l tacti max-beat-dev))
+(defcli temperley ((output train)
+		   (outputvars note deviation t-ph0
+			       duple-ph0 triple-ph0 triple-ph1
+			       t0 u l tacti max-beat-dev))
   (make-instance
    'jackdaw::temperley
-   :note (read-from-string note)
-   :deviation (read-from-string deviation)
-   :t-ph0 (read-from-string t-ph0)
-   :triple-ph0 (read-from-string triple-ph0)
-   :triple-ph1 (read-from-string triple-ph1)
-   :duple-ph0 (read-from-string duple-ph0)
-   :tacti (read-from-string tacti)
-   :t0 (read-from-string t0)
-   :l (read-from-string l)
-   :u (read-from-string u)
-   :max-beat-dev (read-from-string max-beat-dev)))
+   :output output
+   :note (parse-or note)
+   :deviation (parse-or deviation)
+   :t-ph0 (parse-or t-ph0)
+   :triple-ph0 (parse-or triple-ph0)
+   :triple-ph1 (parse-or triple-ph1)
+   :duple-ph0 (parse-or duple-ph0)
+   :tacti (parse-or tacti)
+   :t0 (parse-or t0)
+   :l (parse-or l)
+   :u (parse-or u)
+   :max-beat-dev (parse-or max-beat-dev)))
+
+(defcli event-based-symbolic-temperley ((train output)
+					(outputvars ioi-domain u l t0 t-ph0 duple-ph0
+						    triple-ph0 triple-ph1 note))
+  (make-instance
+   'jackdaw::event-based-symbolic-temperley
+   :output output
+   :outputvars outputvars
+   :ioi-domain (parse-or ioi-domain)
+   :note (parse-or note)
+   :t-ph0 (parse-or t-ph0)
+   :triple-ph0 (parse-or triple-ph0)
+   :triple-ph1 (parse-or triple-ph1)
+   :duple-ph0 (parse-or duple-ph0)
+   :t0 (parse-or t0)
+   :l (parse-or l)
+   :u (parse-or u)))
 
 (defcli downbeat-distance ((train output update-exclusion disable-mixtures)
 			   (outputvars ioi-domain meter-params order-bound
 				       escape))
   (make-instance
    'jackdaw::downbeat-distance
-   :escape (if (null escape) :c (read-from-string escape))
-   :order-bound (unless (null order-bound) (read-from-string order-bound))
-   :mixtures (not no-mixtures)
+   :escape (parse-or escape :c)
+   :order-bound (parse-or order-bound)
+   :mixtures (not disable-mixtures)
    :update-exclusion update-exclusion
-   :outputvars (unless (null outputvars) (read-from-string outputvars))
-   :meter-params (unless (null meter-params) (read-from-string meter-params))
-   :ioi-domain (unless (null ioi-domain) (read-from-string ioi-domain))
-   :outputvars (unless (null outputvars) (read-from-string outputvars))
+   :outputvars (parse-or outputvars)
+   :meter-params (parse-or meter-params)
+   :ioi-domain (parse-or ioi-domain)
+   :outputvars (parse-or outputvars)
    :output output
    :training? train))
 
@@ -122,13 +146,13 @@ UID, and subsequent elements correspond to (cddr columns)."
   (let ((name (read-from-string name)))
     (make-instance
      name
-     :escape (if (null escape) :c (read-from-string escape))
-     :order-bound (unless (null order-bound) (read-from-string order-bound))
-     :mixtures (not no-mixtures)
-     :update-exclusion update-exlclusion
+     :escape (parse-or escape :c)
+     :order-bound (parse-or order-bound)
+     :mixtures (not disable-mixtures)
+     :update-exclusion update-exclusion
      :output output
      :outputvars (list name)
-     :basic-domain (unless (null basic-domain) (read-from-string basic-domain))
+     :basic-domain (parse-or basic-domain)
      :training? train)))
 
 (let* ((argv sb-ext:*posix-argv*)
