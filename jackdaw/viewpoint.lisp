@@ -8,6 +8,14 @@
 
 (defconstant +undefined+ '@ "The undefined symbol.")
 
+(defmacro viewpoint-accumulator (constraint &optional initialization-constraint)
+  `(recursive
+    (mapcar (lambda (s) (if (eq s +undefined+) $^self
+			    (cons s $^self)))
+	    ,constraint)
+    (mapcar (lambda (s) (unless (eq s +undefined+) (list s)))
+	    ,(or initialization-constraint constraint))))
+
 (defmethod initialize-instance :after ((m viewpoint)
 				       &key (mixtures t) update-exclusion
 					 (escape :c) order-bound)
