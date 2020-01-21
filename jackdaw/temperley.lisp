@@ -145,6 +145,14 @@
 				  (t-ph0 .6)
 				  (deviation '(.32 .24 .08 .02))
 				  (note '(.01 .38 .74 .95)))
+  "U is the probability of the upper level being triple, L of the lower level 
+begin triple, T0 a list of probabilities of initial tactus intervals (from
+minimum to maximum), DUPLE-PH0 the probability of a BPH of zero given a duple 
+upper level, TRIPLE-PH0 and TRIPLE-PH1 are the probabilities of BPH being 1 or 2 
+given a triple upper level. T-PH0 is the probability of the tactus phase being zero. 
+NOTE is a list of probabilities of note onsets at metrical levels from 0 (not a beat) to
+the maximum beat salience. DEVIATION is a list of probabilities that a note deviates from
+a beat by N pips, where N is the position in the list."
   (setf (slot-value (distribution m 'U) 'p) u
 	(slot-value (distribution m 'L) 'p) l
 	(slot-value (distribution m 'T) 't0) t0

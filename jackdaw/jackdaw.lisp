@@ -109,18 +109,6 @@ CONS the CAR of which is its mark and whose CDR is the a feature index."
 	   (setf (gethash vertex visited) :yes)
 	   (cons vertex result)))))))
 
-;; Model serialization
-
-(defwriter generative-model (m)
-    (let ((params))
-      (loop for (var dist) on (distributions m) by #'cddr collect
-	   (setf (getf params var) (serialize dist)))
-      params))
-(defreader generative-model (m distributions)
-  (loop for (var dist) on distributions by #'cddr do
-       (with-input-from-string (s (write-to-string dist))
-	 (deserialize (getf (distributions m) var) s))))
-
 ;; Representation of states and variable identifiers
 
 (defun constraint-argument (v)
@@ -423,6 +411,18 @@ inactive variables have been pruned."
 			     (topological-sort m)) previous-state
 			     moment)))
     (when (eq (length congruent-states) 0)
-      (warn "Moment ~a cold not be generated." moment))
+      (warn "At event ~a, moment ~a could not be generated." *event* moment))
     congruent-states))
 
+;; Model serialization
+
+(defwriter generative-model (m)
+    (let ((params))
+      (loop for (var dist) on (distributions m) by #'cddr collect
+	   (setf (getf params var) (serialize dist)))
+      params))
+(defreader generative-model (m distributions)
+  (loop for (var dist) on distributions by #'cddr do
+       (warn "~a ~a" var (getf (distributions m) var) dist)
+       (with-input-from-string (s (write-to-string dist))
+	 (deserialize (getf (distributions m) var) s))))
