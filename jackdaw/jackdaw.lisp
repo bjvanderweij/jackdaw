@@ -74,8 +74,8 @@ with congruency constraints."))
    (distributions :accessor distributions :type 'list)))
 
 (defclass dag ()
-  ((vertices :initarg :vertices :accessor vertices)
-   (edge-table :initarg :edge-table :reader edge-table :type 'hastable)))
+  ((vertices :accessor vertices)
+   (edge-table :reader edge-table :type 'hastable)))
 
 (defmethod edges ((m dag) vertex)
   (gethash vertex (edge-table m)))
