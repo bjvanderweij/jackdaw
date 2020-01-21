@@ -142,6 +142,9 @@ its value from a model state."
 (defun apriori (v)
   (intern (format nil "^~A" (symbol-name v)) :jackdaw))
 
+(defun apriori? (v)
+  (eq (elt (symbol-name v) 0) #\^))
+
 (defun basename (s)
   "Given an a priori version of a variable name, return its
 stem. For example, if S is :^X, (BASENAME S) is :X."
