@@ -2,8 +2,11 @@
 
 (defmodel viewpoint (generative-model)
   ((basic-domain :reader basic-domain :initarg :basic-domain)
+   (basic-feature :reader basic-feature)
    (training? :initarg :training? :reader training?))
   () () :required-fields (basic-domain))
+
+(defconstant +undefined+ '@ "The undefined symbol.")
 
 (defmethod initialize-instance :after ((m viewpoint)
 				       &key (mixtures t) update-exclusion
@@ -25,20 +28,20 @@
 
 (defmacro defviewpoint (name input viewpoint)
   `(defmodel ,name (viewpoint)
-     ()
+     ((basic-feature :initform '(,input)))
      ((e (^e v)
-	      (accumulator
-	       (loop for e in (basic-domain model) if
-		    (equal
-		     (funcall ,viewpoint
-			      (cons e (if (equal $^e +inactive+) nil $^e)))
-		     (car $v))
-		  collect e))
-	      :inputs (,input)
-	      :posterior-constraint
-	      (equal ,(input-argument input) (car $e)))
-      (v (^v ^e)
 	 (accumulator
+	  (loop for e in (basic-domain model) if
+	       (equal
+		(funcall ,viewpoint
+			 (cons e (if (equal $^e +inactive+) nil $^e)))
+		(car $v))
+	     collect e))
+	 :inputs (,input)
+	 :posterior-constraint
+	 (equal ,(input-argument input) (car $e)))
+      (v (^v ^e)
+	 (viewpoint-accumulator
 	  (loop for e in (basic-domain model) collect
 	       (funcall ,viewpoint (cons e (if (equal $^e +inactive+) nil $^e))))))
       (,name (v) (deterministic (car $v))))
@@ -49,7 +52,9 @@
   (lambda (events) (car events)))
 
 (defviewpoint delta-ioi-vp ioi
-  (lambda (events) (- (car events) (cadr events))))
+  (lambda (events) (if (null (cdr events))
+		       +undefined+
+		       (- (car events) (cadr events)))))
 
 (defviewpoint ioi-ratio ioi
   (lambda (events) (- (car events) (cadr events))))
@@ -75,7 +80,8 @@
 	:posterior-constraint
 	(normal (eq $ioi <ioi)))
    (D-IOI (^d-ioi ^ioi)
-	  (chain (accumulator (loop for ioi in (ioi-domain model) collect (- ioi $^ioi))) (^ioi))))
+	  (chain (accumulator (loop for ioi in (ioi-domain model) collect
+				   (- ioi $^ioi))) (^ioi))))
   ((D-IOI () (accumulator-model))))
 
 (defmodel ioi-ratio (ioi-based)
