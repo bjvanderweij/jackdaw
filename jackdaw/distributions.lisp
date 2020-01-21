@@ -200,35 +200,39 @@ parent variables are instantiated."
   (when (not (null arguments))
     (warn "It looks like you're conditioning a Bernouilli distribution on something,
 the implementation does not support this."))
-  (if (equal symbol (car (symbols d)))
-      (p d)
-      (progn
-	(unless (equal symbol (cadr (symbols d)))
-	  (warn "Generating (1 - p) probability for unfamiliar symbol."))
-	(pr:in (- 1 (p d))))))
+  (pr:in (if (equal symbol (car (symbols d)))
+	     (p d)
+	     (progn
+	       (unless (equal symbol (cadr (symbols d)))
+		 (warn "Generating (1 - p) probability for unfamiliar symbol."))
+	       (- 1 (p d))))))
 
 (defmethod set-param ((d categorical) arguments symbol probability)
   "Set probability of distribution parameter. Probabilities must be given not in
 log representation. Caller must ensure probabilities sum to one."
-  (setf (gethash (cons symbol arguments) (p d)) (pr:in probability)))
+  (setf (gethash (cons symbol arguments) (p d)) probability))
 
 (defmethod probability ((d categorical) arguments symbol)
   (multiple-value-bind (p found?)
       (gethash (cons symbol arguments) (p d))
     (unless found?
       (warn "Categorical probability of ~a given ~a not found." symbol arguments))
-    p))
+    (pr:in p)))
 
 (defmethod probabilities ((d distribution) parents-state congruent-states)
   "Obtain the probability of provided CONGRUENT-STATES by the PROBABILITY method.
 Normalize the resulting distribution."
-  (let* ((table (make-hash-table :test #'equal))
-	 (arguments (mapcar (lambda (v) (getarg v parents-state)) (arguments d)))
-	 (probabilities (mapcar (lambda (s) (probability d arguments s))
-				congruent-states))
-	 (sum (apply #'pr:add probabilities)))
-    (loop for s in congruent-states for p in probabilities do
-	 (setf (gethash s table)
-	       (pr:div p sum)))
+  (let ((table (make-hash-table :test #'equal))
+	(arguments (mapcar (lambda (v) (getarg v parents-state)) (arguments d))))
+    (if (equal congruent-states (list +inactive+))
+	(setf (gethash +inactive+ table) (pr:in 1))
+	(let* ((probabilities (mapcar (lambda (s) (probability d arguments s))
+				      congruent-states))
+	       (sum (apply #'pr:add probabilities)))
+	  (loop for s in congruent-states for p in probabilities do
+	       (setf (gethash s table) (pr:div p sum)))))
     table))
+
+
+
 
