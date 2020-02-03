@@ -7,9 +7,11 @@
     (load quicklisp-init)))
 
 (defvar *idyom-root* "/home/bastiaan/projects/idyom/")
-(let ((*standard-output* *error-output*)) ; re-route standard output to error
-  (push "/home/bastiaan/projects/idyom/" asdf:*central-registry*)
-  (push "/home/bastiaan/projects/jackdaw/" asdf:*central-registry*)
+(let ((*standard-output* *error-output*) ; re-route standard output to error
+      (idyom-root (sb-ext:posix-getenv "IDYOM_ROOT"))
+      (jackdaw-root (sb-ext:posix-getenv "JACKDAW_ROOT")))
+  (push (or idyom-root "/home/bastiaan/projects/idyom/") asdf:*central-registry*)
+  (push (or jackdaw-root "/home/bastiaan/projects/jackdaw/") asdf:*central-registry*)
   (ql:quickload "jackdaw"))
 
 (defvar *cli-commands* nil)
