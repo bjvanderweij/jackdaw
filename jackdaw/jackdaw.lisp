@@ -133,7 +133,7 @@ its value from a model state."
     ((hash-table-p state)
      (multiple-value-bind (v found?)
 	 (gethash key state)
-       (unless found? (warn "~A not found in state or moment." key))
+       ;;(unless found? (warn "~A not found in state or moment." key))
        v))
     ((listp state)
      (getf state (tokeyword key)))))
@@ -435,6 +435,11 @@ inactive variables have been pruned."
       params))
 (defreader generative-model (m distributions)
   (loop for (var dist) on distributions by #'cddr do
-       (warn "~a ~a" var (getf (distributions m) var) dist)
        (with-input-from-string (s (write-to-string dist))
 	 (deserialize (getf (distributions m) var) s))))
+
+;; Optimizations:
+;; Sort vertices after model creation
+;; Represents states as vectors of length |VERTICES|
+;; Create ONE hash table that returns for each vertex the index of
+;; its state in a state-vector
