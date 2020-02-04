@@ -76,6 +76,17 @@ parent variables are instantiated."
 (defviewpoint ioi-vp ioi
   (lambda (events) (car events)))
 
+(defclass ioi-vp-ignore-first (ioi-vp) ())
+
+(defmethod process-sequence ((m ioi-vp-ignore-first) moments
+			     &optional
+			       write-header?
+			       (event 0)
+			       (congruent-states (list (root-state m))))
+  (if (eq event 0)
+      (process-sequence m (cdr moments) write-header? 1 congruent-states)
+      (call-next-method)))
+
 (defviewpoint delta-ioi-vp ioi
   (lambda (events) (if (null (cdr events))
 		       +undefined+
