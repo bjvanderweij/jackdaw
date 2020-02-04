@@ -55,6 +55,12 @@
       (,name (v) (deterministic (car $v))))
      ((v () (accumulator-model)))))
 
+;;; An IOI viewpoint that ignores the first event
+(defviewpoint ioi-vp-ignore-first ioi
+  (lambda (events)
+    (if (null (cdr events)
+	      +undefined+
+	      (car events)))))
 
 (defviewpoint ioi-vp ioi
   (lambda (events) (car events)))
