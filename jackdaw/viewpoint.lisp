@@ -10,10 +10,11 @@
 
 (defmacro viewpoint-accumulator (constraint &optional initialization-constraint)
   `(recursive
-    (mapcar (lambda (s) (if (eq s +undefined+) $^self
+    (mapcar (lambda (s) (if (eq (car $^self) +undefined+)
+			    (cons s (cdr $^self))
 			    (cons s $^self)))
 	    ,constraint)
-    (mapcar (lambda (s) (unless (eq s +undefined+) (list s)))
+    (mapcar (lambda (s) (list s))
 	    ,(or initialization-constraint constraint))))
 
 (defmethod initialize-instance :after ((m viewpoint)
@@ -34,6 +35,21 @@
     (call-next-method m s)
     (setf (slot-value m 'basic-domain) (second data))))
 
+(defclass viewpoint-model (accumulator-model) ())
+
+(defmethod probabilities ((d viewpoint-model) parents-state congruent-states)
+  "Obtain the location object of the appropriate PPM model given context.
+Context is obtained by accessing the previous self of the current variable, 
+which if the current variable is an accumulator, must represent the context.
+Note that PARENTS-STATE represents a state in the current moment in which any
+parent variables are instantiated."
+  (if (or (equal congruent-states (list +inactive+))
+	  (equal congruent-states (list nil)))
+      (let ((table (make-hash-table :test #'equal)))
+	(setf (gethash (car congruent-states) table) (pr:in 1))
+	table)
+      (call-next-method)))
+
 (defmacro defviewpoint (name input viewpoint)
   `(defmodel ,name (viewpoint)
      ((basic-feature :initform '(,input)))
@@ -50,17 +66,12 @@
 	 (equal ,(input-argument input) (car $e)))
       (v (^v ^e)
 	 (viewpoint-accumulator
-	  (loop for e in (basic-domain model) collect
-	       (funcall ,viewpoint (cons e (if (equal $^e +inactive+) nil $^e))))))
-      (,name (v) (deterministic (car $v))))
-     ((v () (accumulator-model)))))
-
-;;; An IOI viewpoint that ignores the first event
-(defviewpoint ioi-vp-ignore-first ioi
-  (lambda (events)
-    (if (null (cdr events))
-	+undefined+
-	(car events))))
+	  (remove-duplicates
+	   (loop for e in (basic-domain model) collect
+		(funcall ,viewpoint (cons e (if (equal $^e +inactive+) nil $^e))))
+	   :test #'equal)))
+	 (,name (v) (deterministic (car $v))))
+     ((v () (viewpoint-model)))))
 
 (defviewpoint ioi-vp ioi
   (lambda (events) (car events)))
