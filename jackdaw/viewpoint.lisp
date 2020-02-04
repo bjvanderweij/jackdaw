@@ -58,9 +58,9 @@
 ;;; An IOI viewpoint that ignores the first event
 (defviewpoint ioi-vp-ignore-first ioi
   (lambda (events)
-    (if (null (cdr events)
-	      +undefined+
-	      (car events)))))
+    (if (null (cdr events))
+	+undefined+
+	(car events))))
 
 (defviewpoint ioi-vp ioi
   (lambda (events) (car events)))
