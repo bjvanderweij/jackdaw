@@ -6,12 +6,14 @@
   (when (probe-file quicklisp-init)
     (load quicklisp-init)))
 
-(defvar *idyom-root* "/home/bastiaan/projects/idyom/")
 (let ((*standard-output* *error-output*) ; re-route standard output to error
-      (idyom-root (sb-ext:posix-getenv "IDYOM_ROOT"))
-      (jackdaw-root (sb-ext:posix-getenv "JACKDAW_ROOT")))
-  (push (or idyom-root "/home/bastiaan/projects/idyom/") asdf:*central-registry*)
-  (push (or jackdaw-root "/home/bastiaan/projects/jackdaw/") asdf:*central-registry*)
+      (idyom-root (or (sb-ext:posix-getenv "IDYOM_ROOT")
+		      "/home/bastiaan/projects/idyom/"))
+      (jackdaw-root (or (sb-ext:posix-getenv "JACKDAW_ROOT")
+			"/home/bastiaan/projects/jackdaw/")))
+  (defvar *idyom-root* idyom-root)
+  (push idyom-root asdf:*central-registry*)
+  (push jackdaw-root asdf:*central-registry*)
   (ql:quickload "jackdaw"))
 
 (defvar *cli-commands* nil)
@@ -83,9 +85,12 @@ UID, and subsequent elements correspond to (cddr columns)."
 	      (cons uid events))))))
 
 (defun parse-or (arg &optional default)
+  "Read ARG if it is not NIL, otherwise return DEFAULT."
   (if (null arg) default (read-from-string arg)))
 
 (defun retrieve-dataset (path)
+  "Parse CSV data from a file at PATH or from *STANDARD-INPUT* if
+PATH is NIL. Convert to sequences after reading."
   (let ((data
 	 (fare-csv:with-rfc4180-csv-syntax ()
 	   (fare-csv:read-csv-stream (or path *standard-input*)))))
