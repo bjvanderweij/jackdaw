@@ -76,6 +76,9 @@ parent variables are instantiated."
 (defviewpoint ioi-vp ioi
   (lambda (events) (car events)))
 
+(defviewpoint ppm symbol
+    (lambda (events) (car events)))
+
 (defclass ioi-vp-ignore-first (ioi-vp) ())
 
 (defmethod process-sequence ((m ioi-vp-ignore-first) moments
