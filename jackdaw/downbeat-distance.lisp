@@ -3,25 +3,30 @@
 (defmodel downbeat-distance (generative-model)
   ((ioi-domain :initarg :ioi-domain :reader ioi-domain)
    (meter-domain :reader meter-domain)
-   (training? :initarg :training? :reader training?))
+   (training? :initarg :training? :reader training? :initform nil))
   ((M (^m)
       (one-shot (meter-domain model))
       :inputs (period pulses) :posterior-constraint
       (recursive t (equal $m (list <period <pulses))))
-   (B (^b m)
-      (accumulator (loop for ioi in (ioi-domain model) collect
-			(+ (mod (car $^b) (car $m)) ioi))
-		   (loop for phase below (car $m) collect phase))
+   (B (^b ^p m)
+      (chain
+       (accumulator
+	(loop for ioi in (ioi-domain model) collect (+ $^p ioi)))
+       (^p))
+      :output (lambda (s) (if (eq +inactive+ s) "" (car s)))
       :inputs (ioi)
       :posterior-constraint
-      (recursive (eq (car $b) (+ (mod (car $^b) (car $m)) <ioi)) t))
-   (B-out (b) (deterministic (car $b)))
-   ;;(M-out (m) (deterministic (format nil "~a/~a" (car $m) (cadr $m))))
+      (chain-posterior (eq (+ $^p <ioi) (car $b)) (^p)))
    (period (m) (deterministic (car $m)))
    (pulses (m) (deterministic (cadr $m)))
-   (P0 (^p0 b) ;; Observe this to constrain the first phase.
-       (one-shot (list (car $b)))
-       :inputs (ioi) :posterior-constraint (recursive t (eq $p0 <ioi))))
+   (P (^p m b) ;; Observe this to constrain the first phase.
+      (recursive (deterministic (mod (car $b) (car $m)))
+		 (loop for phase below (car $m) collect phase))
+      :inputs (ioi)
+      :posterior-constraint
+      (recursive t (eq $p <ioi)))
+   (P0 (^p0 p) (one-shot (deterministic $p)))
+   (IOI (b ^p) (chain (deterministic (- (car $b) $^p)) (^p))))
   ((B (m) (accumulator-model))
    (M nil (categorical)))
    :required-fields (ioi-domain))
@@ -52,7 +57,7 @@
 	  (slot-value ppm-dist 'escape) escape
 	  (slot-value ppm-dist 'update-exclusion) update-exclusion
 	  (slot-value ppm-dist 'order-bound) order-bound))
-  (if (training? m) (funcall #'hide m) (funcall #'hide m 'M 'P0))
+  (if (training? m) (funcall #'hide m) (funcall #'hide m 'M 'P))
   (warn "Training is ~A." (if (training? m) "ON" "OFF"))
   (setf (slot-value m 'meter-domain) (mapcar #'car meter-params))
   (loop for (meter probability) in meter-params do
@@ -60,3 +65,4 @@
 
 ;; test reading and writing
 ;; why is generate state ran more than once? or is it? 
+
