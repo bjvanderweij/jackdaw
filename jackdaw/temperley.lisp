@@ -53,6 +53,8 @@
     (pr:in (if symbol p (- 1 p)))))
 
 (defmethod probability ((d bar-phase) arguments symbol)
+  "Calculate the probability of a tactus beat phase with respect to the bar.
+Arguments is a list of length one containing the number of tactus beats per bar."
   (let ((grouping (car arguments)))
     (pr:in
      (case grouping

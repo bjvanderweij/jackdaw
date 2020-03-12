@@ -341,7 +341,7 @@ To observe everything, call without variables."
 	      (push new-state new-states))))))))
 
 (defmethod rotate-state ((m generative-model) state &key (keep-trace? t))
-  "\"Rotate\" a state. In the a priori version of a state, every parameter
+  "\"Rotate\" a state. In  rotated (a priori) version of a state, every parameter
 :X is renamed :^X and variables of the form :^X in STATE are dropped."
   (let ((new-state (make-hash-table)))
     (setf (gethash :probability new-state) (gethash :probability state))
@@ -376,8 +376,8 @@ To observe everything, call without variables."
 	(trace-back previous-state variable new-trace))))
 
 (defmethod root-state ((m generative-model))
-  "The root state. Root nodes of Bayesian networks must be conditioned
-on a root state."
+  "The root state. Every root nodes in a Bayesian networks is conditioned
+on this root state."
   (let ((state (make-hash-table)))
     (setf (gethash :probability state) (pr:in 1))
     (dolist (variable (mapcar #'apriori (marginal-params m)) state)
@@ -411,6 +411,7 @@ on a root state."
   (when write-header? (write-header m))
   (let* ((sequence (car dataset))
 	 (*sequence* (car sequence)))
+    ;;(warn "~a" (car sequence))
     (process-sequence m (cdr sequence)))
   (unless (null (cdr dataset))
     (process-dataset m (cdr dataset))))
