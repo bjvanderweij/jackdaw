@@ -69,6 +69,7 @@ with congruency constraints."))
    (hidden :accessor hidden :initform nil)
    (required-fields :reader required-fields :initform nil)
    (observed :reader observed :initform nil :type 'list)
+   (output-functions :reader output-functions :initform nil :type 'list)
    (prior-constraints :reader prior-constraints :type 'hashtable)
    (posterior-constraints :reader posterior-constraints :type 'hashtable)
    (distributions :accessor distributions :type 'list)))
@@ -213,12 +214,14 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 		    &key required-fields)
   (let* ((edges (make-hash-table))
 	 (variables) (posterior-constraints) (prior-constraints)
-	 (distributions))
+	 (output-functions) (distributions))
     (loop for specification in variable-specs do
 	 (destructuring-bind
-	       (v parents prior-constraint &key posterior-constraint inputs)
+	       (v parents prior-constraint &key posterior-constraint inputs
+		  (output '#'identity))
 	     specification
 	   (push v variables)
+	   (push output output-functions)
 	   (setf (gethash v edges) parents)
 	   (let ((prior-constraint (macroexpand `,prior-constraint))
 		 (posterior-constraint (macroexpand `,posterior-constraint)))
@@ -240,6 +243,7 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
        ((distributions :initform (list ,@(apply #'append (reverse distributions))))
 	(vertices :initform '(,@(reverse variables)))
 	(edge-table :initform ,edges)
+	(output-functions :initform (list ,@(reverse output-functions)))
 	(prior-constraints :initform (list ,@(reverse prior-constraints)))
 	(posterior-constraints :initform (list ,@(reverse posterior-constraints)))
 	(required-fields :initform '(,@required-fields))
@@ -251,6 +255,11 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
   (when (not (every (lambda (s) (slot-boundp m s)) (required-fields m)))
     (error "~A requires ~{~a~^,~} to be provided as initialization arguments."
 	   (type-of m) (required-fields m))))
+
+(defmethod output-function ((m generative-model) variable)
+  "Return the congruency constraint associated with VARIABLE in model M."
+  (let ((p (position variable (vertices m))))
+    (elt (output-functions m) p)))
 
 (defmethod prior-constraint ((m generative-model) variable)
   "Return the congruency constraint associated with VARIABLE in model M."
@@ -344,7 +353,8 @@ To observe everything, call without variables."
   (format output "~a,~a~{,~a~^~},~a,~a~%" *sequence* *event*
 	  (loop for v in (if (null (outputvars m))
 			     (vertices m)
-			     (outputvars m)) collect (getarg v state))
+			     (outputvars m)) collect (funcall (output-function m v)
+							      (getarg v state)))
 	  congruent probability))
 
 (defun trace-back (state variable &optional trace)
