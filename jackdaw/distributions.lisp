@@ -157,25 +157,21 @@ create one and a corresponding root location for the empty context ()."
 	  (setf (gethash arguments (ppms d)) (spawn-ppm d))
 	  model))))
 
-(defmethod probabilities ((d accumulator-model) parents-state congruent-states)
+(defmethod get-distribution ((d accumulator-model) table arguments congruent-states)
   "Obtain the location object of the appropriate PPM model given context.
 Context is obtained by accessing the previous self of the current variable, 
 which if the current variable is an accumulator, must represent the context.
 Note that PARENTS-STATE represents a state in the current moment in which any
 parent variables are instantiated."
-  (let* ((context (getarg (apriori (dist-var d)) parents-state))
-	 (context (unless (eq context +inactive+) context)) ; Make context empty list
-	 (arguments (mapcar (lambda (v) (getarg v parents-state))
-			    (remove (dist-var d) (arguments d))))
+  (let* ((context (cdr (car congruent-states)))
 	 (model (get-model d arguments))
-	 (table (make-hash-table :test #'equal))
 	 (location (get-location d model context arguments))
 	 (alphabet (mapcar #'car congruent-states)))
-    ;;(format t "Context: ~a. Symbol: ~a.~%" context alphabet)
     (ppm:set-alphabet model alphabet)
     (dolist (p (ppm::get-distribution model location))
       (let ((symbol (car p))
 	    (probability (pr:in (cadr p))))
+	(cons symbol context)
 	(setf (gethash (cons symbol context) table) probability)))
     table))
 
@@ -192,7 +188,6 @@ parent variables are instantiated."
       (setf (gethash (cons symbol arguments) counts) new-s-count)
       (setf (gethash (cons symbol arguments) (p d))
 	    (pr:in (/ new-s-count new-arg-count))))))
-
 
 (defmethod probability ((d uniform) arguments symbol) (pr:in 1)) ; is normalised later
 
@@ -221,17 +216,23 @@ log representation. Caller must ensure probabilities sum to one."
 
 (defmethod probabilities ((d distribution) parents-state congruent-states)
   "Obtain the probability of provided CONGRUENT-STATES by the PROBABILITY method.
-Normalize the resulting distribution."
+This is just a wrapper for GET-DISTRIBUTION which grabs arguments from PARENTS-STATE
+and avoids a call to GET-DISTRIBUTION when the variable is inactive."
   (let ((table (make-hash-table :test #'equal))
 	(arguments (mapcar (lambda (v) (getarg v parents-state)) (arguments d))))
     (if (equal congruent-states (list +inactive+))
 	(setf (gethash +inactive+ table) (pr:in 1))
-	(let* ((probabilities (mapcar (lambda (s) (probability d arguments s))
-				      congruent-states))
-	       (sum (apply #'pr:add probabilities)))
-	  (loop for s in congruent-states for p in probabilities do
-	       (setf (gethash s table) (pr:div p sum)))))
+	(get-distribution d table arguments congruent-states))
     table))
+
+(defmethod get-distribution ((d distribution) table arguments congruent-states)
+  (let* ((probabilities (mapcar (lambda (s) (probability d arguments s))
+				congruent-states))
+	 (sum (apply #'pr:add probabilities)))
+    (loop for s in congruent-states for p in probabilities do
+	 (setf (gethash s table) (pr:div p sum)))
+    table))
+
 
 
 
