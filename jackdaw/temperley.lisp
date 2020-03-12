@@ -229,7 +229,7 @@ a beat by N pips, where N is the position in the list."
   ;; Todo implement more efficient state generation
   (call-next-method))
 
-(defmethod generate-states ((m temperley) vertices previous-state moment)
+(defmethod generate-states ((m temperley) vertices previous-state moment &optional root?)
   ;; Todo implement more efficient state generation
   (call-next-method))
 
