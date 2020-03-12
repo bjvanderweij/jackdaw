@@ -158,7 +158,7 @@ PATH is NIL. Convert to sequences after reading."
      :mixtures (not disable-mixtures)
      :update-exclusion update-exclusion
      :output output
-     :outputvars (list name)
+     :outputvars (list 'v)
      :basic-domain (parse-or basic-domain)
      :training? train)))
 

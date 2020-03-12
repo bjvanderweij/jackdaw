@@ -3,7 +3,7 @@
 (defmodel viewpoint (generative-model)
   ((basic-domain :reader basic-domain :initarg :basic-domain)
    (basic-feature :reader basic-feature)
-   (training? :initarg :training? :reader training?))
+   (training? :initarg :training? :reader training? :initform nil))
   () () :required-fields (basic-domain))
 
 (defconstant +undefined+ '@ "The undefined symbol.")
@@ -69,8 +69,8 @@ parent variables are instantiated."
 	  (remove-duplicates
 	   (loop for e in (basic-domain model) collect
 		(funcall ,viewpoint (cons e (if (equal $^e +inactive+) nil $^e))))
-	   :test #'equal)))
-	 (,name (v) (deterministic (car $v))))
+	   :test #'equal))
+	 :output #'car))
      ((v () (viewpoint-model)))))
 
 (defviewpoint ioi-vp ioi
