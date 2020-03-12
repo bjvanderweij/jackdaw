@@ -333,14 +333,15 @@ To observe everything, call without variables."
     (dolist (variable (marginal-params m) new-state)
       (setf (gethash (apriori variable) new-state) (gethash variable state)))))
 
-(defmethod write-header ((m generative-model))
-  (format (output m) "sequence,event~{,~a~^~},congruent,probability~%" 
+(defmethod write-header ((m generative-model) &optional (output (output m)))
+  (format output "sequence,event~{,~a~^~},congruent,probability~%" 
 	  (loop for v in (if (null (outputvars m))
 			     (vertices m)
 			     (outputvars m)) collect (string-downcase (symbol-name v)))))
 
-(defmethod write-state ((m generative-model) state congruent probability)
-  (format (output m) "~a,~a~{,~a~^~},~a,~a~%" *sequence* *event*
+(defmethod write-state ((m generative-model) state congruent probability
+			&optional (output (output m)))
+  (format output "~a,~a~{,~a~^~},~a,~a~%" *sequence* *event*
 	  (loop for v in (if (null (outputvars m))
 			     (vertices m)
 			     (outputvars m)) collect (getarg v state))
