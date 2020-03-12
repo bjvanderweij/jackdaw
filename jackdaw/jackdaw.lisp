@@ -291,13 +291,21 @@ To observe everything, call without variables."
     (remove-duplicates (apply #'append horizontal-dependencies))))
 
 (defmethod a-priori-congruent ((m generative-model) variable parents-state)
-  (funcall (prior-constraint m variable) m parents-state))
+    (handler-case
+	(funcall (prior-constraint m variable) m parents-state)
+      (error (e)
+	(warn "Error in a priori congruency constraint of ~A!" variable)
+	(error e))))
 
 (defmethod a-posteriori-congruent ((m generative-model) variable parents-state moment state)
   "Return the a posteriori congruent states of VARIABLE."
   (let ((constraint (posterior-constraint m variable)))
     (if (not (or (null constraint) (hidden? m variable)))
-	(funcall constraint m parents-state moment state)
+	(handler-case
+	    (funcall constraint m parents-state moment state)
+	  (error (e)
+	    (warn "Error in a priori congruency constraint of ~A!" variable)
+	    (error e)))
 	t)))
 
 (defmethod generate-states ((m generative-model) variables previous-state moment)
