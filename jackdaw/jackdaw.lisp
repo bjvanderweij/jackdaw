@@ -299,6 +299,9 @@ To observe everything, call without variables."
 	(warn "Error in a priori congruency constraint of ~A!" variable)
 	(error e))))
 
+(defmethod observed? ((m generative-model) v)
+  (not (or (null (posterior-constraint m v)) (hidden? m v))))
+
 (defmethod a-posteriori-congruent ((m generative-model) variable parents-state moment state)
   "Return the a posteriori congruent states of VARIABLE."
   (let ((constraint (posterior-constraint m variable)))
@@ -336,7 +339,9 @@ To observe everything, call without variables."
 	    (setf (gethash :congruent? new-state) congruent?)
 	    ;;(warn "~a ~a ~a" s probability s-probability)
 	    (when final? (write-state m new-state congruent? s-probability))
-	    (when (or (not final?) congruent?)
+	    ;; If the state is not congruent but congruency depends on the observation
+	    ;; generate it nevertheless.
+	    (when (or (and (not final?) (observed? m variable)) congruent?)
 	      (when (null s-probability)
 		(warn "State ~a not found in distribution." s))
 	      (setf (gethash :probability new-state) s-probability)
