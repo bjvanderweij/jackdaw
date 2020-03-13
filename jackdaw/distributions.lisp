@@ -6,7 +6,7 @@
   ((arguments :initarg :arguments :reader arguments :initform nil)
    (variable :initarg :variable :reader dist-var)))
 (defclass bernouilli (distribution)
-  ((p :initarg :p :accessor p)
+  ((p :initarg :p :accessor p :initform .5)
    (symbols :initarg :symbols :accessor symbols)))
 (defclass categorical (distribution)
   ((category-counts :accessor category-counts :initform (make-hash-table :test #'equal))
@@ -234,8 +234,3 @@ and avoids a call to GET-DISTRIBUTION when the variable is inactive."
     (loop for s in congruent-states for p in probabilities do
 	 (setf (gethash s table) (pr:div p sum)))
     table))
-
-
-
-
-

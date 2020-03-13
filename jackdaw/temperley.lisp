@@ -9,14 +9,14 @@
    (phase :initarg :phase :reader beat-phase :initform 1)
    (p :initarg :p :reader p)))
 (defclass bar-phase (distribution)
-  ((duple :initarg :duple :reader duple)
-   (triple :initarg :triple :reader triple)))
+  ((duple :initarg :duple :reader duple :initform .5)
+   (triple :initarg :triple :reader triple :initform '(.3 .3))))
 (defclass tactus-phase (distribution)
   ((zero :initarg :zero :reader zero
 	 :documentation
 	 "Probability of a phase of zero. Must be > 0 and <= 1.")))
 (defclass note (distribution)
-  ((p :initarg :p :reader p)))
+  ((p :initarg :p :reader p :initform '(.5 .5 .5 .5))))
 (defclass temperley-ioi (note) ())
 
 ;; Serializers
@@ -246,4 +246,3 @@ a beat by N pips, where N is the position in the list."
       (call-next-method m s)
       (setf (slot-value m 'ioi-domain) ioi-domain)
       (setf (slot-value m 'tacti) tacti))))
-
