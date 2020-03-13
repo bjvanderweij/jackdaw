@@ -252,6 +252,8 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 ;; Model mechanics
 
 (defmethod initialize-instance :after ((m generative-model) &key)
+  (when (not (every (lambda (v) (member v (vertices m))) (outputvars m)))
+    (error "Some outputvars are not a variable in the model."))
   (when (not (every (lambda (s) (slot-boundp m s)) (required-fields m)))
     (error "~A requires ~{~a~^,~} to be provided as initialization arguments."
 	   (type-of m) (required-fields m))))
@@ -446,7 +448,8 @@ inactive variables have been pruned."
 			     (topological-sort m)) previous-state
 			     moment)))
     (when (eq (length congruent-states) 0)
-      (warn "At event ~a, moment ~a could not be generated." *event* moment))
+      (warn "Posterior congruency constraints not satisfied in any state for input
+~a at moment #~a." moment *event*))
     congruent-states))
 
 ;; Model serialization
