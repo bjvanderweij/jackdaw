@@ -414,18 +414,17 @@ on this root state."
 	     marginal)
     states))
 
-(defmethod process-dataset ((m generative-model) dataset &optional write-header?)
-  (when write-header? (write-header m))
+(defmethod process-dataset ((m generative-model) dataset &optional (write-header? t))
   (let* ((sequence (car dataset))
 	 (*sequence* (car sequence)))
     ;;(warn "~a" (car sequence))
-    (process-sequence m (cdr sequence)))
+    (process-sequence m (cdr sequence) write-header?))
   (unless (null (cdr dataset))
-    (process-dataset m (cdr dataset))))
+    (process-dataset m (cdr dataset) nil)))
 	 
 (defmethod process-sequence ((m generative-model) moments
 			     &optional
-			       write-header?
+			       (write-header? t)
 			       (event 0)
 			       (congruent-states (list (root-state m))))
   (when write-header? (write-header m))
