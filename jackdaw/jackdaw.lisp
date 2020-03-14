@@ -206,7 +206,7 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 		   (list ,@(mapcar #'constraint-argument dependencies))))
        ,constraint
        t))
-		 
+
 
 ;; Model definition macro
 
@@ -339,9 +339,9 @@ To observe everything, call without variables."
 	    (setf (gethash :congruent? new-state) congruent?)
 	    ;;(warn "~a ~a ~a" s probability s-probability)
 	    (when final? (write-state m new-state congruent? s-probability))
-	    ;; If the state is not congruent but congruency depends on the observation
-	    ;; generate it nevertheless.
-	    (when (or (and (not final?) (observed? m variable)) congruent?)
+	    ;; Incongruent final states should not be returned,
+	    ;; otherwise, do generate them.
+	    (when (or (not final?) congruent?)
 	      (when (null s-probability)
 		(warn "State ~a not found in distribution." s))
 	      (setf (gethash :probability new-state) s-probability)
