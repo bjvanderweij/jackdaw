@@ -6,6 +6,10 @@
    (training? :initarg :training? :reader training? :initform nil))
   () () :required-fields (basic-domain))
 
+(defmodel linked (viewpoint)
+  ((viewpoints :reader viewpoints :initarg viewpoints))
+  () () :required-fields (viewpoints))
+
 (defconstant +undefined+ '@ "The undefined symbol.")
 
 (defmacro viewpoint-accumulator (constraint &optional initialization-constraint)
@@ -16,6 +20,37 @@
 	    ,constraint)
     (mapcar (lambda (s) (list s))
 	    ,(or initialization-constraint constraint))))
+
+(defmethod initialize-instance :after ((m linked) &key)
+  (let* ((identifiers (remove-duplicates (viewpoints m)))
+	 (instances (mapcar (lambda (m) (make-instance m)) identifiers))
+	 (inputs (mapcar (lambda (m) (basic-feature m)) instances))
+	 (domains (mapcar (lambda (m) (basic-domain m)) instances))
+	 (domains-table (make-hash-table))
+	 (basic-inputs) (basic-domains))
+    (assert (every (lambda (m) (typep m 'viewpoint)) instances))
+    (loop for input in inputs for domain in domains do
+	 (multiple-value-bind (stored-domain found?)
+	     (gethash input domains-table)
+	   (when found? (assert (equal stored-domain domain)))
+	   (setf (gethash input domains-table) domain)))
+    (maphash (lambda (input domain)
+	       (push input basic-inputs)
+	       (push domain basic-domains)) domains-table)
+    (setf (slot-value m 'basic-domain) (apply #'cartesian-product basic-domains))
+    (setf (slot-value m 'basic-inputs) basic-inputs)
+    (setf (slot-value m 'viewpoint-instances) instances)
+    ;; Option: 
+    ;; Given previous events, we need the possible values of the new viewpoint
+    ;; which are obtained by iterating over the basic domain
+    ;; Given a viewpoint value, we need to possible basic values,
+    ;; which are obtained by iterating over the basic domain and collecting those that map
+    ;; to the observed value, or doing that individually for each viewpoint and taking
+    ;; the Cartesian product.
+    ;; Take the 
+    ;; Take the constraint of V of every viewpoint
+  ))
+   
 
 (defmethod initialize-instance :after ((m viewpoint)
 				       &key (mixtures t) update-exclusion
@@ -120,7 +155,8 @@ parent variables are instantiated."
 	(normal (eq $ioi <ioi)))
    (D-IOI (^d-ioi ^ioi)
 	  (chain (accumulator (loop for ioi in (ioi-domain model) collect
-				   (- ioi $^ioi))) (^ioi))))
+				   (- ioi $^ioi)))
+		 (^ioi))))
   ((D-IOI () (accumulator-model))))
 
 (defmodel ioi-ratio (ioi-based)
