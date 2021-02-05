@@ -181,8 +181,12 @@ stem. For example, if S is :^X, (BASENAME S) is :X."
 (defmacro recursive (constraint initialization-constraint)
   `(if (eq $^self +inactive+) ,initialization-constraint ,constraint))
 
-(defmacro one-shot (constraint)
+(defmacro persistent (constraint)
   `(recursive (list $^self) ,constraint))
+
+(defmacro one-shot (constraint)
+  `(persistent ,constraint))
+
 
 (defmacro accumulator (constraint &optional initialization-constraint)
   `(recursive
