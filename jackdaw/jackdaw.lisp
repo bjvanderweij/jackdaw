@@ -457,7 +457,7 @@ inactive variables have been pruned."
 			     moment)))
     (when (eq (length congruent-states) 0)
       (warn "Posterior congruency constraints not satisfied in any state for input
-~a at moment #~a." moment *event*))
+~a at moment #~a in sequence ~a." moment *event* *sequence*))
     congruent-states))
 
 ;; Model serialization
