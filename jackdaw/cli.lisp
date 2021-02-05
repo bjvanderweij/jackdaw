@@ -51,8 +51,8 @@ ensure events are consecutive, create rows consisting of event
 sequences. Each event is a vector, the first elements of which is
 UID, and subsequent elements correspond to (cddr columns)."
   (unless (equal (subseq (car rows) 0 2)
-		 (list "uid" "event"))
-    (error "First two columns of CSV must be 'uid' and 'event'."))
+		 (list "sequence" "event"))
+    (error "First two columns of CSV must be 'sequence' and 'event'."))
   (let* ((columns (cddr (car rows)))
 	 (rows (cdr rows))
 	 (max-indices (make-hash-table :test #'equal)))
