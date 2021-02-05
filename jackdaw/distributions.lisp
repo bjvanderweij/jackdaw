@@ -166,6 +166,8 @@ which if the current variable is an accumulator, must represent the context.
 Note that PARENTS-STATE represents a state in the current moment in which any
 parent variables are instantiated."
   (let* ((context (cdr (car congruent-states)))
+	 ;; If modeling an accumulator (CDR (CAR CONGRUENT-STATES) represents
+	 ;; the previous states, which must be the same in all congruent states.
 	 (model (get-model d arguments))
 	 (location (get-location d model context arguments))
 	 (alphabet (mapcar #'car congruent-states)))
@@ -234,3 +236,13 @@ and avoids a call to GET-DISTRIBUTION when the variable is inactive."
     (loop for s in congruent-states for p in probabilities do
 	 (setf (gethash s table) (pr:div p sum)))
     table))
+
+
+
+
+
+
+
+
+
+
